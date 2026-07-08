@@ -1,0 +1,15 @@
+build/
+build-*/
+.hvigor/
+.gradle/
+android/.gradle/
+android/build/
+android/app/.cxx/
+android/app/build/
+android/local.properties
+harmony/.hvigor/
+harmony/oh_modules/
+harmony/build/
+harmony/entry/.cxx/
+harmony/entry/build/
+harmony/entry/oh_modules/
