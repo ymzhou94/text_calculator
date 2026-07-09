@@ -21,6 +21,7 @@ add_executable(text_calculator WIN32
     src/main.cpp
 )
 target_link_libraries(text_calculator PRIVATE calc_engine user32 gdi32)
+target_link_libraries(text_calculator PRIVATE comdlg32)
 if(MINGW)
     target_link_options(text_calculator PRIVATE -municode)
 endif()

@@ -63,8 +63,72 @@ std::wstring FormatNumber(double value) {
     return NarrowToWide(text);
 }
 
+std::wstring FormatScientificNumber(double value) {
+    if (std::abs(value) < kZeroTolerance) {
+        value = 0.0;
+    }
+
+    std::ostringstream stream;
+    stream << std::scientific << std::setprecision(12) << value;
+    std::string text = stream.str();
+
+    const size_t exponent = text.find_first_of("eE");
+    if (exponent == std::string::npos) {
+        return NarrowToWide(text);
+    }
+
+    std::string mantissa = text.substr(0, exponent);
+    while (!mantissa.empty() && mantissa.back() == '0') {
+        mantissa.pop_back();
+    }
+    if (!mantissa.empty() && mantissa.back() == '.') {
+        mantissa.pop_back();
+    }
+    if (mantissa == "-0") {
+        mantissa = "0";
+    }
+
+    const int exponent_value = std::stoi(text.substr(exponent + 1));
+    std::ostringstream normalized;
+    normalized << mantissa << 'e' << (exponent_value >= 0 ? '+' : '-')
+               << std::setw(2) << std::setfill('0') << std::abs(exponent_value);
+    return NarrowToWide(normalized.str());
+}
+
 bool IsInteger(double value) {
     return std::isfinite(value) && std::abs(value - std::round(value)) < 1e-12;
+}
+
+bool IsLatexUnaryFunction(const std::wstring& command, std::wstring& name) {
+    if (command == L"sin" || command == L"cos" || command == L"tan" ||
+        command == L"asin" || command == L"acos" || command == L"atan") {
+        name = command;
+        return true;
+    }
+    if (command == L"arcsin") {
+        name = L"asin";
+        return true;
+    }
+    if (command == L"arccos") {
+        name = L"acos";
+        return true;
+    }
+    if (command == L"arctan") {
+        name = L"atan";
+        return true;
+    }
+    return false;
+}
+
+double PositiveModulo(double left, double right) {
+    const double result = std::fmod(left, right);
+    if (std::abs(result) < kZeroTolerance) {
+        return 0.0;
+    }
+    if (result < 0.0) {
+        return result + std::abs(right);
+    }
+    return result;
 }
 
 class LatexNormalizer {
@@ -256,11 +320,26 @@ private:
             return L"ln";
         }
 
+        std::wstring unary_function;
+        if (IsLatexUnaryFunction(command, unary_function)) {
+            const std::wstring argument = ParseOptionalArgument();
+            if (!error_.empty()) {
+                return L"";
+            }
+            if (!argument.empty()) {
+                return unary_function + L"(" + argument + L")";
+            }
+            return unary_function;
+        }
+
         if (command == L"cdot" || command == L"times" || command == L"ast") {
             return L"*";
         }
         if (command == L"div") {
             return L"/";
+        }
+        if (command == L"mod" || command == L"bmod") {
+            return L"%";
         }
         if (command == L"left" || command == L"right") {
             return L"";
@@ -361,6 +440,7 @@ enum class TokenType {
     Minus,
     Star,
     Slash,
+    Percent,
     Caret,
     LParen,
     RParen,
@@ -413,6 +493,8 @@ public:
                 return Token{TokenType::Star, 0.0, L"*", start};
             case L'/':
                 return Token{TokenType::Slash, 0.0, L"/", start};
+            case L'%':
+                return Token{TokenType::Percent, 0.0, L"%", start};
             case L'^':
                 return Token{TokenType::Caret, 0.0, L"^", start};
             case L'(':
@@ -518,7 +600,8 @@ private:
         double left = ParseUnary();
 
         while (error_.empty()) {
-            if (current_.type == TokenType::Star || current_.type == TokenType::Slash) {
+            if (current_.type == TokenType::Star || current_.type == TokenType::Slash ||
+                current_.type == TokenType::Percent) {
                 const TokenType op = current_.type;
                 Advance();
                 const double right = ParseUnary();
@@ -528,6 +611,12 @@ private:
                         return 0.0;
                     }
                     left /= right;
+                } else if (op == TokenType::Percent) {
+                    if (std::abs(right) < kZeroTolerance) {
+                        Fail(L"modulo by zero");
+                        return 0.0;
+                    }
+                    left = std::fmod(left, right);
                 } else {
                     left *= right;
                 }
@@ -690,6 +779,50 @@ private:
             return 0.0;
         }
 
+        if (name == L"sin" || name == L"cos" || name == L"tan" || name == L"asin" ||
+            name == L"acos" || name == L"atan") {
+            RequireArgCount(name, args, 1);
+            if (!error_.empty()) {
+                return 0.0;
+            }
+            if ((name == L"asin" || name == L"acos") &&
+                (args[0] < -1.0 || args[0] > 1.0)) {
+                Fail(name + L" requires a value from -1 to 1");
+                return 0.0;
+            }
+            if (name == L"sin") {
+                return std::sin(args[0]);
+            }
+            if (name == L"cos") {
+                return std::cos(args[0]);
+            }
+            if (name == L"tan") {
+                return std::tan(args[0]);
+            }
+            if (name == L"asin") {
+                return std::asin(args[0]);
+            }
+            if (name == L"acos") {
+                return std::acos(args[0]);
+            }
+            return std::atan(args[0]);
+        }
+
+        if (name == L"mod" || name == L"rem" || name == L"remainder") {
+            RequireArgCount(name, args, 2);
+            if (!error_.empty()) {
+                return 0.0;
+            }
+            if (std::abs(args[1]) < kZeroTolerance) {
+                Fail(name + L" divisor cannot be zero");
+                return 0.0;
+            }
+            if (name == L"mod") {
+                return PositiveModulo(args[0], args[1]);
+            }
+            return std::fmod(args[0], args[1]);
+        }
+
         Fail(L"unknown function: " + name);
         return 0.0;
     }
@@ -788,6 +921,14 @@ Evaluation EvaluateExpression(std::wstring_view line) {
 
     Parser parser(normalized);
     return parser.Parse();
+}
+
+Evaluation EvaluateExpressionScientific(std::wstring_view line) {
+    Evaluation result = EvaluateExpression(line);
+    if (result.ok) {
+        result.output = FormatScientificNumber(result.value);
+    }
+    return result;
 }
 
 }  // namespace textcalc

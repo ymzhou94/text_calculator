@@ -13,5 +13,6 @@ struct Evaluation {
 };
 
 Evaluation EvaluateExpression(std::wstring_view line);
+Evaluation EvaluateExpressionScientific(std::wstring_view line);
 
 }  // namespace textcalc

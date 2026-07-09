@@ -92,6 +92,9 @@ scripts\build-all.bat
 ## Behavior
 
 Type one expression per line. Press Enter and the app inserts a result line.
+The Windows exe also includes buttons for clearing the editor, inserting
+scientific notation for the active expression, saving the editor text, and
+showing a short help dialog.
 
 Supported plain text examples:
 
@@ -103,6 +106,12 @@ root(3,27)
 log(100)
 log(2,8)
 ln(e)
+sin(pi/2)
+cos(0)
+tan(pi/4)
+10%3
+mod(-1,5)
+rem(-5,3)
 ```
 
 Supported LaTeX examples:
@@ -113,6 +122,8 @@ Supported LaTeX examples:
 \sqrt[3]{27}
 \log_{2}{8}
 \ln(e)
+\sin{\pi/2}
+5 \bmod 2
 ```
 
 MVP assumptions:
@@ -120,4 +131,7 @@ MVP assumptions:
 - `log(x)` is base 10.
 - `ln(x)` is natural log.
 - `log(base, value)` and `\log_{base}{value}` use a custom base.
+- Trigonometric functions use radians.
+- `%`, `rem(a,b)`, and `remainder(a,b)` return the signed remainder.
+- `mod(a,b)` returns a non-negative modulo value.
 - Invalid lines produce an error line instead of guessing an interpretation.

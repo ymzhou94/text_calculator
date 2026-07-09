@@ -46,11 +46,23 @@ int main() {
         {L"log(100)", 2.0, L"2"},
         {L"log(2,8)", 3.0, L"3"},
         {L"ln(e)", 1.0, L"1"},
+        {L"sin(pi/2)", 1.0, L"1"},
+        {L"cos(0)", 1.0, L"1"},
+        {L"tan(pi/4)", 1.0, L"1"},
+        {L"asin(1)", 3.14159265358979323846 / 2.0, L""},
+        {L"acos(1)", 0.0, L"0"},
+        {L"atan(1)", 3.14159265358979323846 / 4.0, L""},
+        {L"10%3", 1.0, L"1"},
+        {L"rem(-5,3)", -2.0, L"-2"},
+        {L"remainder(-5,3)", -2.0, L"-2"},
+        {L"mod(-1,5)", 4.0, L"4"},
         {L"2pi", 2.0 * 3.14159265358979323846, L""},
         {L"\\frac{1}{2}+\\sqrt{9}", 3.5, L"3.5"},
         {L"2^{3}+\\sqrt[3]{27}", 11.0, L"11"},
         {L"\\log_{2}{8}", 3.0, L"3"},
         {L"\\ln(e)", 1.0, L"1"},
+        {L"\\sin{\\pi/2}", 1.0, L"1"},
+        {L"5 \\bmod 2", 1.0, L"1"},
         {L"\\frac{1+1}{\\sqrt{16}}", 0.5, L"0.5"},
     };
 
@@ -76,7 +88,13 @@ int main() {
         }
     }
 
-    const textcalc::Evaluation invalid = textcalc::EvaluateExpression(L"\\sin{1}");
+    const textcalc::Evaluation scientific = textcalc::EvaluateExpressionScientific(L"12345");
+    if (!scientific.ok || scientific.output != L"1.2345e+04") {
+        std::cerr << "FAIL scientific notation output: " << ToNarrow(scientific.output) << "\n";
+        ok = false;
+    }
+
+    const textcalc::Evaluation invalid = textcalc::EvaluateExpression(L"\\unknown{1}");
     if (invalid.ok) {
         std::cerr << "FAIL unsupported LaTeX command should be rejected\n";
         ok = false;
