@@ -112,6 +112,10 @@ tan(pi/4)
 10%3
 mod(-1,5)
 rem(-5,3)
+3.3k/1.1k
+2M
+2m
+1u+500n
 ```
 
 Supported LaTeX examples:
@@ -123,6 +127,7 @@ Supported LaTeX examples:
 \log_{2}{8}
 \ln(e)
 \sin{\pi/2}
+1\mu
 5 \bmod 2
 ```
 
@@ -134,4 +139,6 @@ MVP assumptions:
 - Trigonometric functions use radians.
 - `%`, `rem(a,b)`, and `remainder(a,b)` return the signed remainder.
 - `mod(a,b)` returns a non-negative modulo value.
+- Numeric suffixes support `t`, `g`, `k`, `M`, `m`, `u`, `n`, `p`, and `f`.
+- Suffix case is ignored except `M` is mega and `m` is milli.
 - Invalid lines produce an error line instead of guessing an interpretation.

@@ -131,6 +131,49 @@ double PositiveModulo(double left, double right) {
     return result;
 }
 
+bool TryUnitMultiplier(wchar_t unit, double& multiplier) {
+    switch (unit) {
+        case L't':
+        case L'T':
+            multiplier = 1e12;
+            return true;
+        case L'g':
+        case L'G':
+            multiplier = 1e9;
+            return true;
+        case L'k':
+        case L'K':
+            multiplier = 1e3;
+            return true;
+        case L'M':
+            multiplier = 1e6;
+            return true;
+        case L'm':
+            multiplier = 1e-3;
+            return true;
+        case L'u':
+        case L'U':
+        case L'µ':
+        case L'μ':
+            multiplier = 1e-6;
+            return true;
+        case L'n':
+        case L'N':
+            multiplier = 1e-9;
+            return true;
+        case L'p':
+        case L'P':
+            multiplier = 1e-12;
+            return true;
+        case L'f':
+        case L'F':
+            multiplier = 1e-15;
+            return true;
+        default:
+            return false;
+    }
+}
+
 class LatexNormalizer {
 public:
     explicit LatexNormalizer(std::wstring_view input) : input_(input) {}
@@ -350,6 +393,9 @@ private:
         if (command == L"e") {
             return L"e";
         }
+        if (command == L"mu") {
+            return L"u";
+        }
 
         Fail(L"unsupported LaTeX command: \\" + command);
         return L"";
@@ -537,14 +583,25 @@ private:
             }
         }
 
-        const std::wstring number_text = input_.substr(start, pos_ - start);
+        const size_t number_end = pos_;
+        const std::wstring number_text = input_.substr(start, number_end - start);
         wchar_t* end = nullptr;
-        const double value = std::wcstod(number_text.c_str(), &end);
+        double value = std::wcstod(number_text.c_str(), &end);
         if (end == number_text.c_str() || !std::isfinite(value)) {
             return Token{TokenType::Unknown, 0.0, number_text, start};
         }
 
-        return Token{TokenType::Number, value, number_text, start};
+        double multiplier = 1.0;
+        if (pos_ < input_.size() && TryUnitMultiplier(input_[pos_], multiplier) &&
+            (pos_ + 1 >= input_.size() || !std::iswalpha(input_[pos_ + 1]))) {
+            value *= multiplier;
+            ++pos_;
+            if (!std::isfinite(value)) {
+                return Token{TokenType::Unknown, 0.0, input_.substr(start, pos_ - start), start};
+            }
+        }
+
+        return Token{TokenType::Number, value, input_.substr(start, pos_ - start), start};
     }
 
     std::wstring input_;

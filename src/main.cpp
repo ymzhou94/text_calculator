@@ -227,13 +227,15 @@ void ShowHelp(HWND hwnd) {
                 L"1+2*3, 2^8, sqrt(16), root(3,27)\n"
                 L"log(100), log(2,8), ln(e)\n"
                 L"sin(pi/2), cos(0), tan(pi/4)\n"
-                L"10%3, mod(-1,5), rem(-5,3)\n\n"
+                L"10%3, mod(-1,5), rem(-5,3)\n"
+                L"3.3k/1.1k, 2M, 2m, 1u+500n\n\n"
                 L"LaTeX:\n"
-                L"\\frac{1}{2}, \\sqrt[3]{27}, \\sin{\\pi/2}, 5 \\bmod 2\n\n"
+                L"\\frac{1}{2}, \\sqrt[3]{27}, \\sin{\\pi/2}, 1\\mu, 5 \\bmod 2\n\n"
                 L"Buttons:\n"
                 L"Clear deletes all text. Sci inserts scientific notation for the active line "
                 L"or replaces the selection. Save writes the editor text to a UTF-8 file.\n\n"
-                L"Trigonometric functions use radians.",
+                L"Trigonometric functions use radians. Unit suffixes are case-insensitive except "
+                L"M is mega and m is milli.",
                 L"Text Calculator Help", MB_OK);
     SetFocus(g_edit);
 }
