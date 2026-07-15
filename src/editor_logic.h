@@ -7,6 +7,8 @@ namespace textcalc {
 
 struct EnterInsertion {
     bool should_insert = false;
+    size_t replace_start = 0;
+    size_t replace_end = 0;
     std::wstring text;
 };
 

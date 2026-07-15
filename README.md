@@ -91,10 +91,35 @@ scripts\build-all.bat
 
 ## Behavior
 
-Type one expression per line. Press Enter and the app inserts a result line.
-The Windows exe also includes buttons for clearing the editor, inserting
-scientific notation for the active expression, saving the editor text, and
-showing a short help dialog.
+Enter always inserts a normal text newline. In the Windows exe, if the completed
+line contains only a supported mathematical expression, the result is added to
+that same line:
+
+```text
+1+2*3    = 7
+```
+
+Other text is left unchanged without an error line. The result portion uses a
+different color, and each visible result has a `引用` button that inserts the
+result value at the current caret. The button itself is not part of the text and
+is not saved to the file.
+
+The Windows exe can open and save UTF-8 text files. Its toolbar also includes
+actions for clearing the editor, inserting scientific notation for the active
+expression, and showing a short help dialog. Clear can be undone with `Ctrl+Z`.
+Each tab keeps its own text, file path, dirty state, and undo history.
+
+Windows shortcuts:
+
+- `Ctrl+O`: open a UTF-8 text file.
+- `Ctrl+S`: save the current file.
+- `Ctrl+Shift+S`: save as a different file.
+- `Ctrl+T`: create a new editor tab.
+- `Ctrl+W`: close the current tab.
+- `Ctrl+Tab`: switch to the next tab.
+- `Ctrl+E`: insert scientific notation.
+- `Ctrl+Shift+Delete`: clear the editor.
+- `F1`: show help.
 
 Supported plain text examples:
 
@@ -141,4 +166,4 @@ MVP assumptions:
 - `mod(a,b)` returns a non-negative modulo value.
 - Numeric suffixes support `t`, `g`, `k`, `M`, `m`, `u`, `n`, `p`, and `f`.
 - Suffix case is ignored except `M` is mega and `m` is milli.
-- Invalid lines produce an error line instead of guessing an interpretation.
+- Lines that are not complete mathematical expressions remain ordinary text.

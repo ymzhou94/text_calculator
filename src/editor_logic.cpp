@@ -27,6 +27,40 @@ bool IsGeneratedLine(const std::wstring& line) {
     return !line.empty() && (line.front() == L'=' || line.front() == L'!');
 }
 
+size_t ConsumeLineEnding(std::wstring_view text, size_t position) {
+    if (position >= text.size()) {
+        return position;
+    }
+
+    if (text[position] == L'\r') {
+        ++position;
+        if (position < text.size() && text[position] == L'\n') {
+            ++position;
+        }
+    } else if (text[position] == L'\n') {
+        ++position;
+    }
+    return position;
+}
+
+size_t ReplacementEndAfterCaret(std::wstring_view text, size_t caret) {
+    size_t replacement_end = ConsumeLineEnding(text, caret);
+    const size_t next_line_start = replacement_end;
+
+    size_t next_line_end = next_line_start;
+    while (next_line_end < text.size() && text[next_line_end] != L'\r' &&
+           text[next_line_end] != L'\n') {
+        ++next_line_end;
+    }
+
+    const std::wstring next_line =
+        TrimLine(std::wstring(text.substr(next_line_start, next_line_end - next_line_start)));
+    if (IsGeneratedLine(next_line)) {
+        replacement_end = ConsumeLineEnding(text, next_line_end);
+    }
+    return replacement_end;
+}
+
 std::wstring LineBeforeCaret(std::wstring_view text, size_t caret) {
     if (caret == 0 || caret > text.size()) {
         return L"";
@@ -59,9 +93,14 @@ EnterInsertion BuildEnterInsertion(std::wstring_view editor_text, size_t caret) 
     }
 
     const Evaluation evaluation = EvaluateExpression(line);
+    if (!evaluation.ok) {
+        return insertion;
+    }
+
     insertion.should_insert = true;
-    insertion.text = evaluation.ok ? L"= " + evaluation.output + L"\r\n"
-                                   : L"! " + evaluation.error + L"\r\n";
+    insertion.replace_start = caret;
+    insertion.replace_end = ReplacementEndAfterCaret(editor_text, caret);
+    insertion.text = L"= " + evaluation.output + L"\r\n";
     return insertion;
 }
 

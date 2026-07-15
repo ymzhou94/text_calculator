@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(TextCalculator VERSION 0.1.0 LANGUAGES CXX)
+project(TextCalculator VERSION 0.1.0 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -19,9 +19,9 @@ target_include_directories(calc_engine PUBLIC src)
 
 add_executable(text_calculator WIN32
     src/main.cpp
+    src/text_calculator.rc
 )
-target_link_libraries(text_calculator PRIVATE calc_engine user32 gdi32)
-target_link_libraries(text_calculator PRIVATE comdlg32)
+target_link_libraries(text_calculator PRIVATE calc_engine user32 gdi32 comdlg32 comctl32)
 if(MINGW)
     target_link_options(text_calculator PRIVATE -municode)
 endif()

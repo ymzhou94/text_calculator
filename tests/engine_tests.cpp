@@ -133,10 +133,45 @@ int main() {
         ok = false;
     }
 
+    const std::wstring edited_document = L"1+2\r\n\r\n= 2\r\n4+5";
+    const textcalc::EnterInsertion replacement =
+        textcalc::BuildEnterInsertion(edited_document, 5);
+    std::wstring updated_document = edited_document;
+    if (replacement.should_insert) {
+        updated_document.replace(replacement.replace_start,
+                                 replacement.replace_end - replacement.replace_start,
+                                 replacement.text);
+    }
+    if (!replacement.should_insert || updated_document != L"1+2\r\n= 3\r\n4+5") {
+        std::cerr << "FAIL editor enter insertion should replace the previous result line\n";
+        ok = false;
+    }
+
+    const std::wstring following_input = L"1+2\r\n\r\n4+5";
+    const textcalc::EnterInsertion before_input =
+        textcalc::BuildEnterInsertion(following_input, 5);
+    std::wstring document_with_result = following_input;
+    if (before_input.should_insert) {
+        document_with_result.replace(before_input.replace_start,
+                                     before_input.replace_end - before_input.replace_start,
+                                     before_input.text);
+    }
+    if (!before_input.should_insert || document_with_result != L"1+2\r\n= 3\r\n4+5") {
+        std::cerr << "FAIL editor enter insertion should preserve the following input line\n";
+        ok = false;
+    }
+
     const textcalc::EnterInsertion generated =
         textcalc::BuildEnterInsertion(L"= 7\r\n", 5);
     if (generated.should_insert) {
         std::cerr << "FAIL generated result lines should not be evaluated again\n";
+        ok = false;
+    }
+
+    const textcalc::EnterInsertion plain_text =
+        textcalc::BuildEnterInsertion(L"meeting notes\r\n", 15);
+    if (plain_text.should_insert) {
+        std::cerr << "FAIL plain text lines should only insert a newline\n";
         ok = false;
     }
 
@@ -162,6 +197,13 @@ int main() {
         "= 7\r\n", insertion_buffer, sizeof(insertion_buffer), &c_insertion);
     if (generated_status != TEXTCALC_STATUS_OK || c_insertion.should_insert != 0) {
         std::cerr << "FAIL C API generated result lines should not be evaluated again\n";
+        ok = false;
+    }
+
+    const TextCalcStatus plain_text_status = textcalc_build_enter_insertion_utf8(
+        "meeting notes\n", insertion_buffer, sizeof(insertion_buffer), &c_insertion);
+    if (plain_text_status != TEXTCALC_STATUS_OK || c_insertion.should_insert != 0) {
+        std::cerr << "FAIL C API plain text lines should not generate an error line\n";
         ok = false;
     }
 
