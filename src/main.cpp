@@ -92,18 +92,7 @@ UINT g_dpi = 96;
 int g_toolbar_start_x = 0;
 RECT g_edit_card = {};
 std::wstring g_status_text;
-
-struct EditorTab {
-    HWND edit = nullptr;
-    ITextDocument* text_document = nullptr;
-    std::filesystem::path path;
-    std::wstring saved_text;
-    bool dirty = false;
-};
-
-std::vector<EditorTab> g_tabs;
-size_t g_active_tab = static_cast<size_t>(-1);
-int g_next_edit_id = kEditIdBase;
+HWND g_pending_reference_refresh_edit = nullptr;
 
 struct GeneratedLine {
     size_t line_start = 0;
@@ -111,7 +100,22 @@ struct GeneratedLine {
     size_t end = 0;
     bool is_result = false;
     std::wstring value;
+
+    bool operator==(const GeneratedLine&) const = default;
 };
+
+struct EditorTab {
+    HWND edit = nullptr;
+    ITextDocument* text_document = nullptr;
+    std::filesystem::path path;
+    std::wstring saved_text;
+    std::vector<GeneratedLine> generated_lines;
+    bool dirty = false;
+};
+
+std::vector<EditorTab> g_tabs;
+size_t g_active_tab = static_cast<size_t>(-1);
+int g_next_edit_id = kEditIdBase;
 
 struct ReferenceButton {
     HWND hwnd = nullptr;
@@ -437,7 +441,11 @@ void UpdateWindowTitle(HWND hwnd) {
 
 void RefreshDirtyState(HWND hwnd) {
     EditorTab& tab = ActiveTab();
-    tab.dirty = GetWindowTextString(g_edit) != tab.saved_text;
+    const bool dirty = GetWindowTextString(g_edit) != tab.saved_text;
+    if (dirty == tab.dirty) {
+        return;
+    }
+    tab.dirty = dirty;
     UpdateWindowTitle(hwnd);
 }
 
@@ -668,11 +676,13 @@ void ShowHelp(HWND hwnd) {
     SetFocus(g_edit);
 }
 
-HWND CreateButton(HWND hwnd, HINSTANCE instance, int id, const wchar_t* text) {
+HWND CreateButton(HWND hwnd, HINSTANCE instance, int id, const wchar_t* text,
+                  bool visible = true) {
+    const DWORD visibility_style = visible ? WS_VISIBLE : 0;
     HWND button =
         CreateWindowExW(0, L"BUTTON", text,
-                        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS | BS_PUSHBUTTON |
-                            BS_OWNERDRAW,
+                        WS_CHILD | visibility_style | WS_TABSTOP | WS_CLIPSIBLINGS |
+                            BS_PUSHBUTTON | BS_OWNERDRAW,
                         0, 0, 0, 0, hwnd,
                         reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), instance, nullptr);
     SendMessageW(button, WM_SETFONT, reinterpret_cast<WPARAM>(g_button_font), TRUE);
@@ -690,7 +700,8 @@ void SetTextColorForRange(size_t start, size_t end, COLORREF color) {
     SendMessageW(g_edit, EM_SETCHARFORMAT, SCF_SELECTION, reinterpret_cast<LPARAM>(&format));
 }
 
-void StyleGeneratedLines() {
+void StyleGeneratedLines(const std::wstring& text, const std::vector<GeneratedLine>& lines,
+                         const std::vector<GeneratedLine>& previous_lines) {
     if (g_edit == nullptr || g_text_document == nullptr || g_styling_generated_lines) {
         return;
     }
@@ -703,16 +714,45 @@ void StyleGeneratedLines() {
         return;
     }
 
+    long freeze_count = 0;
+    if (FAILED(g_text_document->Freeze(&freeze_count))) {
+        OutputDebugStringW(L"Text Calculator: failed to freeze RichEdit display.\n");
+        if (FAILED(g_text_document->Undo(tomResume, &undo_state))) {
+            OutputDebugStringW(L"Text Calculator: failed to resume RichEdit formatting undo.\n");
+        }
+        g_styling_generated_lines = false;
+        return;
+    }
+
     CHARRANGE selection{};
     SendMessageW(g_edit, EM_EXGETSEL, 0, reinterpret_cast<LPARAM>(&selection));
     const LRESULT first_visible_line = SendMessageW(g_edit, EM_GETFIRSTVISIBLELINE, 0, 0);
-    const std::wstring text = GetWindowTextString(g_edit);
-    const std::vector<GeneratedLine> lines = ScanGeneratedLines(text);
 
-    SendMessageW(g_edit, WM_SETREDRAW, FALSE, 0);
-    SetTextColorForRange(0, text.size(), kTitleColor);
-    for (const GeneratedLine& line : lines) {
-        SetTextColorForRange(line.start, line.end, line.is_result ? kResultColor : kErrorColor);
+    size_t first_changed = 0;
+    while (first_changed < previous_lines.size() && first_changed < lines.size() &&
+           previous_lines[first_changed] == lines[first_changed]) {
+        ++first_changed;
+    }
+
+    size_t affected_start = text.size();
+    if (previous_lines.empty()) {
+        affected_start = 0;
+    } else {
+        if (first_changed < previous_lines.size()) {
+            affected_start = (std::min)(affected_start, previous_lines[first_changed].start);
+        }
+        if (first_changed < lines.size()) {
+            affected_start = (std::min)(affected_start, lines[first_changed].start);
+        }
+    }
+    affected_start = (std::min)(affected_start, text.size());
+    if (affected_start < text.size()) {
+        SetTextColorForRange(affected_start, text.size(), kTitleColor);
+    }
+    for (size_t i = first_changed; i < lines.size(); ++i) {
+        const GeneratedLine& line = lines[i];
+        SetTextColorForRange(line.start, line.end,
+                             line.is_result ? kResultColor : kErrorColor);
     }
 
     SendMessageW(g_edit, EM_EXSETSEL, 0, reinterpret_cast<LPARAM>(&selection));
@@ -738,8 +778,9 @@ void StyleGeneratedLines() {
     if (new_first_visible_line != first_visible_line) {
         SendMessageW(g_edit, EM_LINESCROLL, 0, first_visible_line - new_first_visible_line);
     }
-    SendMessageW(g_edit, WM_SETREDRAW, TRUE, 0);
-    InvalidateRect(g_edit, nullptr, FALSE);
+    if (FAILED(g_text_document->Unfreeze(&freeze_count))) {
+        OutputDebugStringW(L"Text Calculator: failed to unfreeze RichEdit display.\n");
+    }
     if (FAILED(g_text_document->Undo(tomResume, &undo_state))) {
         OutputDebugStringW(L"Text Calculator: failed to resume RichEdit formatting undo.\n");
     }
@@ -755,14 +796,10 @@ void DestroyReferenceButtons() {
     g_reference_buttons.clear();
 }
 
-void UpdateReferenceButtons(HWND hwnd) {
-    DestroyReferenceButtons();
+void UpdateReferenceButtons(HWND hwnd, const std::vector<GeneratedLine>& lines) {
     if (g_edit == nullptr) {
         return;
     }
-
-    const std::wstring text = GetWindowTextString(g_edit);
-    const std::vector<GeneratedLine> lines = ScanGeneratedLines(text);
 
     RECT edit_rect{};
     GetWindowRect(g_edit, &edit_rect);
@@ -773,6 +810,12 @@ void UpdateReferenceButtons(HWND hwnd) {
     const int button_width = Scale(58);
     const int button_height = Scale(26);
     const int button_x = edit_rect.right - button_width - Scale(20);
+
+    struct DesiredReferenceButton {
+        int y = 0;
+        std::wstring value;
+    };
+    std::vector<DesiredReferenceButton> desired_buttons;
 
     for (const GeneratedLine& line : lines) {
         if (!line.is_result || line.value.empty()) {
@@ -786,19 +829,76 @@ void UpdateReferenceButtons(HWND hwnd) {
             continue;
         }
 
+        desired_buttons.push_back(
+            {edit_rect.top + static_cast<int>(position.y) - Scale(2), line.value});
+    }
+
+    while (g_reference_buttons.size() < desired_buttons.size()) {
         const int id = kReferenceButtonIdBase + static_cast<int>(g_reference_buttons.size());
-        HWND button = CreateButton(hwnd, GetModuleHandleW(nullptr), id, L"引用");
-        MoveWindow(button, button_x, edit_rect.top + static_cast<int>(position.y) - Scale(2),
-                   button_width, button_height, TRUE);
-        SetWindowPos(button, HWND_TOP, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        g_reference_buttons.push_back({button, id, line.value});
+        HWND button = CreateButton(hwnd, GetModuleHandleW(nullptr), id, L"引用", false);
+        if (button == nullptr) {
+            OutputDebugStringW(L"Text Calculator: failed to create a reference button.\n");
+            break;
+        }
+        g_reference_buttons.push_back({button, id, L""});
+    }
+
+    const size_t active_button_count =
+        (std::min)(g_reference_buttons.size(), desired_buttons.size());
+    for (size_t i = 0; i < active_button_count; ++i) {
+        ReferenceButton& button = g_reference_buttons[i];
+        const DesiredReferenceButton& desired = desired_buttons[i];
+        button.value = desired.value;
+
+        RECT current{};
+        GetWindowRect(button.hwnd, &current);
+        MapWindowPoints(nullptr, hwnd, reinterpret_cast<POINT*>(&current), 2);
+        if (current.left != button_x || current.top != desired.y ||
+            current.right - current.left != button_width ||
+            current.bottom - current.top != button_height) {
+            SetWindowPos(button.hwnd, nullptr, button_x, desired.y, button_width, button_height,
+                         SWP_NOACTIVATE | SWP_NOZORDER);
+        }
+        if (!IsWindowVisible(button.hwnd)) {
+            ShowWindow(button.hwnd, SW_SHOWNA);
+        }
+    }
+
+    while (g_reference_buttons.size() > desired_buttons.size()) {
+        ReferenceButton& button = g_reference_buttons.back();
+        DestroyWindow(button.hwnd);
+        g_reference_buttons.pop_back();
+    }
+}
+
+void UpdateReferenceButtons(HWND hwnd) {
+    if (g_active_tab < g_tabs.size()) {
+        UpdateReferenceButtons(hwnd, ActiveTab().generated_lines);
     }
 }
 
 void RefreshGeneratedLineUi(HWND hwnd) {
-    StyleGeneratedLines();
-    UpdateReferenceButtons(hwnd);
+    if (g_edit == nullptr || g_active_tab >= g_tabs.size() || g_styling_generated_lines) {
+        return;
+    }
+
+    const std::wstring text = GetWindowTextString(g_edit);
+    std::vector<GeneratedLine> lines = ScanGeneratedLines(text);
+    EditorTab& tab = ActiveTab();
+    if (lines != tab.generated_lines) {
+        StyleGeneratedLines(text, lines, tab.generated_lines);
+        tab.generated_lines = std::move(lines);
+        UpdateReferenceButtons(hwnd, tab.generated_lines);
+    }
+}
+
+void QueueReferenceButtonRefresh(HWND edit) {
+    if (g_pending_reference_refresh_edit == edit) {
+        return;
+    }
+    g_pending_reference_refresh_edit = edit;
+    PostMessageW(GetParent(edit), kRefreshReferencesMessage,
+                 reinterpret_cast<WPARAM>(edit), 0);
 }
 
 void InsertReferencedResult(HWND hwnd, int id) {
@@ -1063,8 +1163,7 @@ LRESULT CALLBACK RichEditWindowProc(HWND hwnd, UINT message, WPARAM wparam, LPAR
     if (message == WM_KEYDOWN && wparam == VK_RETURN) {
         PostMessageW(GetParent(hwnd), kEvaluateEnterMessage, reinterpret_cast<WPARAM>(hwnd), 0);
     } else if (message == WM_VSCROLL || message == WM_MOUSEWHEEL) {
-        PostMessageW(GetParent(hwnd), kRefreshReferencesMessage,
-                     reinterpret_cast<WPARAM>(hwnd), 0);
+        QueueReferenceButtonRefresh(hwnd);
     }
     return result;
 }
@@ -1315,7 +1414,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
                 RefreshGeneratedLineUi(hwnd);
             } else if (reinterpret_cast<HWND>(lparam) == g_edit &&
                        HIWORD(wparam) == EN_VSCROLL) {
-                UpdateReferenceButtons(hwnd);
+                QueueReferenceButtonRefresh(g_edit);
             }
             return 0;
 
@@ -1327,6 +1426,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
             return 0;
 
         case kRefreshReferencesMessage:
+            if (reinterpret_cast<HWND>(wparam) == g_pending_reference_refresh_edit) {
+                g_pending_reference_refresh_edit = nullptr;
+            }
             if (reinterpret_cast<HWND>(wparam) == g_edit) {
                 UpdateReferenceButtons(hwnd);
             }
