@@ -808,7 +808,7 @@ void UpdateReferenceButtons(HWND hwnd, const std::vector<GeneratedLine>& lines) 
     RECT edit_client{};
     GetClientRect(g_edit, &edit_client);
     const int button_width = Scale(58);
-    const int button_height = Scale(26);
+    const int button_height = Scale(20);
     const int button_x = edit_rect.right - button_width - Scale(20);
 
     struct DesiredReferenceButton {
@@ -830,7 +830,7 @@ void UpdateReferenceButtons(HWND hwnd, const std::vector<GeneratedLine>& lines) 
         }
 
         desired_buttons.push_back(
-            {edit_rect.top + static_cast<int>(position.y) - Scale(2), line.value});
+            {edit_rect.top + static_cast<int>(position.y) + Scale(2), line.value});
     }
 
     while (g_reference_buttons.size() < desired_buttons.size()) {
@@ -860,7 +860,8 @@ void UpdateReferenceButtons(HWND hwnd, const std::vector<GeneratedLine>& lines) 
                          SWP_NOACTIVATE | SWP_NOZORDER);
         }
         if (!IsWindowVisible(button.hwnd)) {
-            ShowWindow(button.hwnd, SW_SHOWNA);
+            SetWindowPos(button.hwnd, HWND_TOP, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
         }
     }
 
